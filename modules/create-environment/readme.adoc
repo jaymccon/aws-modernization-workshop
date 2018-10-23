@@ -1,0 +1,28 @@
+= Digital Modernization
+
+:imagesdir: ../../images
+
+== Creating the Workshop Environment
+
+****
+*Requirements:*
+An AWS account.
+
+*Disclaimer:*
+You are responsible for the cost of the AWS services used while running this workshop in your AWS account.
+****
+
+=== Introduction
+
+If you are participating in this workshop as part of an AWS sponsored event, then this module does not apply to you. However, if you are interested in completing the modules contained in this workshop outside of such events, the steps outlined below will allow you to quickly create a training environment that will work with the instructions contained througout this workshop.
+
+==== Creating an AWS account
+
+If you already have an AWS account, you can skip this step. Otherwise, http://docs.aws.amazon.com/connect/latest/adminguide/gettingstarted.html#sign-up-for-aws[sign up] for an AWS account.
+
+==== Create the training environment
+
+Ensure that you have the appropriate permissions to provision resources in your AWS account. Then, 
+https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/create/review?stackName=AWSModernizationWorkshop&templateURL=https:%2F%2Fmombergm-us-west-2.s3.amazonaws.com%2Fcfn/modernization-aws-workshop%2Ftemplates%2workshop_env_ide.yaml[deploy the environment].
+
+Once the environment has been created, you may proceed with additional configuration steps in the https://modernize.awsworkshop.io/index.html#/workshop/modernization-august-2018/module/modules_getting-started_readme[Getting Started] module.

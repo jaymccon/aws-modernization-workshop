@@ -1,0 +1,120 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS Modernization Workshop - CloudFormation template for creating environment.
+  This AWS CloudFormation template will set up an AWS Cloud9 instance for use with
+  the modules contained in the AWS modernization workshop. **WARNING** This template
+  creates AWS resources. You will be billed for the AWS resources used if you create
+  a stack from this template
+Metadata:
+  LICENSE: |-
+    Copyright 2018 Amazon Web Services
+    Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Cloud9 Configuration
+      Parameters:
+      - C9InstanceType
+      - C9StopTime
+      - C9Subnet
+    ParameterLabels:
+      C9InstanceType:
+        default: Cloud9 Instance Type
+      C9StopTime:
+        default: Stop Time
+      C9Subnet:
+        default: Subnet ID
+Parameters:
+  C9InstanceType:
+    Description: The instance type of the new Amazon EC2 instance that AWS Cloud9
+      will launch for the development environment (for example, 't2.micro').
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+    - t2.micro
+    - t2.small
+    - m4.large
+    - t2.nano
+    - c4.large
+    - t2.medium
+    - t2.large
+    - m4.xlarge
+    - t2.xlarge
+    - c4.xlarge
+    - c4.2xlarge
+    - m4.2xlarge
+    - t2.2xlarge
+    - c4.4xlarge
+    - m4.4xlarge
+    - c4.8xlarge
+    - m4.10xlarge
+    - m4.16xlarge
+  C9StopTime:
+    Description: The number of minutes until the running instance is shut down after
+      the environment has last been used.
+    Type: Number
+    Default: 30
+  C9Subnet:
+    Description: Subnet for your Cloud9 instance.
+    Type: String
+Rules:
+  RegionSupport:
+    Assertions:
+    - Assert:
+        Fn::Equals:
+        - Ref: AWS::Region
+        - us-west-2
+      AssertDescription: Region must be US West (Oregon) - us-west-2
+Resources:
+  C9Instance:
+    Type: AWS::Cloud9::EnvironmentEC2
+    Properties:
+      Name:
+        Ref: AWS::StackName
+      Description: Cloud-based IDE for AWS Modernization Workshop
+      AutomaticStopTimeMinutes:
+        Ref: C9StopTime
+      InstanceType:
+        Ref: C9InstanceType
+      SubnetId:
+        Ref: C9Subnet
+  C9Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: ec2.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AdministratorAccess
+  C9InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+      - Ref: C9Role
+Outputs:
+  C9Instance:
+    Description: Cloud9 Instance Name
+    Value:
+      Ref: C9Instance
+  C9InstanceProfileName:
+    Description: Cloud9 Instance Profile Name
+    Value:
+      Ref: C9InstanceProfile
+  C9InstanceProfileArn:
+    Description: Cloud9 Instance Profile Arn
+    Value:
+      Fn::GetAtt: C9InstanceProfile.Arn
+  IDEStackName:
+    Description: CloudFormation Stack Name
+    Value:
+      Ref: AWS::StackName
+...

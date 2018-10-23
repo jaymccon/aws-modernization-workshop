@@ -1,4 +1,6 @@
 modules:
+  modules_create-environment_readme:
+    name: Create Workshop Environment
   modules_getting-started_readme:
     name: Getting Started
   modules_containerize-application_readme:
