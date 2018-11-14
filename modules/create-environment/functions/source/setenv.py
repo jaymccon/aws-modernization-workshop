@@ -1,111 +1,121 @@
 from __future__ import print_function
-import boto3
-import json
 import time
 import traceback
-from botocore.vendored import requests
+import boto3
 from botocore.exceptions import ClientError
 
-def getInstanceState(client,instanceName):
+
+def get_instance_state(client, instance_name):
     try:
         response = client.describe_instances(
             Filters=[
                 {
                     'Name': 'tag:Name',
-                    'Values': [instanceName]
+                    'Values': [instance_name]
                 }
             ]
-        )   
-        print(instanceName)
+        )
+        print("Found instance {}.".format(instance_name))
         if len(response['Reservations']) < 1:
             print("No instances found, sleeping 5 seconds and retrying.")
             time.sleep(5)
-            getInstanceState(client,instanceName)
+            get_instance_state(client, instance_name)
         if response['Reservations'][0]['Instances'][0]['State']['Name'] != "running":
             print("Instance is not in running state, sleeping 5 seconds and retrying.")
             time.sleep(5)
-            getInstanceState(client,instanceName)
-        return response['Reservations'][0]['Instances'][0]['InstanceId']    
+            get_instance_state(client, instance_name)
+        return response['Reservations'][0]['Instances'][0]['InstanceId']
     except ClientError as e:
         print(e.response['Error']['Message'])
 
-def attachRole(client,iam_instance_profile,InstanceId):
-    client.associate_iam_instance_profile(IamInstanceProfile=iam_instance_profile, InstanceId=InstanceId)
 
-def handler(event,context):
+def attach_role(client, iam_instance_profile, instance_id):
+    client.associate_iam_instance_profile(IamInstanceProfile=iam_instance_profile, InstanceId=instance_id)
+
+
+def handler(event):
     try:
-        print(event['RequestType'])
+        print("Received request to {}.".format(event['RequestType']))
         if event['RequestType'] == 'Create':
             # Open AWS clients
             client = boto3.client('ec2')
-            
-            instanceName = getInstanceState(client,'{}{}{}{}'.format('aws-cloud9-',event['ResourceProperties']['StackName'],'-',event['ResourceProperties']['EnvironmentId']))
+
+            instance_name = get_instance_state(client,
+                                               '{}{}{}{}'.format('aws-cloud9-',
+                                                                 event['ResourceProperties']['StackName'],
+                                                                 '-', event['ResourceProperties']['EnvironmentId']))
+
+            response = client.describe_instances()
 
             # Get the InstanceId of the Cloud9 IDE
             try:
-                print("Getting instance information for instance name {}.".format(instanceName))
-                response = client.describe_instances()    
+                print("Getting instance information for instance {}.".format(instance_name))
                 instance = response['Reservations'][0]['Instances'][0]
+                print(instance)
                 instance['BlockVolumeId'] = instance['BlockDeviceMappings'][0]['Ebs']['VolumeId']
             except ClientError as e:
                 print("Failed getting instance information!")
                 print(e)
                 return False
-        
+
             # Wait for Instance to become ready before adding Role
             try:
-                print("Getting instance state for {}".format(instanceName))
+                print("Getting instance state for {}".format(instance_name))
                 while instance['State']['Name'] != 'running':
                     print("Instance state is not ready, sleeping 5 seconds and retrying.")
                     time.sleep(5)
-                    instance = client.describe_instances(InstanceIds=[instance['InstanceId']])['Reservations'][0]['Instances'][0]
+                    instance = \
+                        client.describe_instances(InstanceIds=[instance['InstanceId']])['Reservations'][0]['Instances'][
+                            0]
             except ClientError as e:
                 print("Failed getting instance state!")
                 print(e)
                 return False
-                
+
             # Modify this instance Role
-            try: 
+            try:
                 # Create the IamInstanceProfile request object
                 iam_instance_profile = {
                     'Arn': event['ResourceProperties']['C9InstanceProfileArn'],
                     'Name': event['ResourceProperties']['C9InstanceProfileName']
                 }
-                print("Attaching IAM role to instance {}.".format(instanceName))
-                attachRole(client,iam_instance_profile,instance['InstanceId'])
-            except ClientError as e: 
+                print("Attaching IAM role to instance {}.".format(instance_name))
+                attach_role(client, iam_instance_profile, instance['InstanceId'])
+            except ClientError as e:
                 print("Failed attaching IAM role!")
                 print(e)
-                #return False
 
             # Modify the size of the Cloud9 IDE EBS volume
             try:
-                waiter = client.get_waiter('instance_status_ok').wait(InstanceIds=[instance['InstanceId']])
-                print("Resizing volume {} for instance {} to {}. This will take several minutes to complete.".format(instance['BlockVolumeId'],instance['InstanceId'],event['ResourceProperties']['EBSVolumeSize']))
-                client.modify_volume(VolumeId=instance['BlockVolumeId'],Size=int(event['ResourceProperties']['EBSVolumeSize']))
-            except ClientError as e: 
+                client.get_waiter('instance_status_ok').wait(InstanceIds=[instance['InstanceId']])
+                print("Resizing volume {} for instance {} to {}. This will take several minutes to complete.".format(
+                    instance['BlockVolumeId'], instance['InstanceId'], event['ResourceProperties']['EBSVolumeSize']))
+                client.modify_volume(VolumeId=instance['BlockVolumeId'],
+                                     Size=int(event['ResourceProperties']['EBSVolumeSize']))
+            except ClientError as e:
                 print("Failed to resize volume!")
                 print(e)
-                #return False
 
             # Reboot the Cloud9 IDE
             try:
-                volume_state = client.describe_volumes_modifications(VolumeIds=[instance['BlockVolumeId']])['VolumesModifications'][0]
+                volume_state = \
+                    client.describe_volumes_modifications(VolumeIds=[instance['BlockVolumeId']])[
+                        'VolumesModifications'][0]
                 while volume_state['ModificationState'] != 'completed':
                     time.sleep(5)
-                    volume_state = client.describe_volumes_modifications(VolumeIds=[instance['BlockVolumeId']])['VolumesModifications'][0]
-                print("Restarting instance {}.".format(instanceName))
+                    volume_state = client.describe_volumes_modifications(VolumeIds=[instance['BlockVolumeId']])[
+                        'VolumesModifications'][0]
+                print("Restarting instance {}.".format(instance_name))
                 client.reboot_instances(InstanceIds=[instance['InstanceId']])
-            except ClientError as e: 
+            except ClientError as e:
                 print("Failed to restart instance!")
                 print(e)
-                #return False
 
         elif event['RequestType'] == 'Update':
-            print(event['RequestType'])
+            print("Received request to {}.".format(event['RequestType']))
             return True
         elif event['RequestType'] == 'Delete':
-            print(event['RequestType'])
+            print("Received request to {}.".format(event['RequestType']))
             return True
-    except:
-        print (traceback.print_exc())
+    except ClientError:
+        print(traceback.print_exc())
