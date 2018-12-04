@@ -1,22 +1,16 @@
 from __future__ import print_function
 import time
 import boto3
-import crhelper
+from .crhelper import *
 
-
-# initialise logger
-logger = crhelper.log_config({"RequestId": "CONTAINER_INIT"})
-logger.info('Logging configured')
-# set global to track init failures
-init_failed = False
-
+init_fail = False
 try:
     # Place initialization code here
     client = boto3.client('ec2')
-    logger.info("Container initialization completed")
-except Exception as e:
-    logger.error(e, exc_info=True)
-    init_failed = e
+    log.info("Container initialization completed")
+except Exception as err:
+    log.error(err, exc_info=True)
+    init_fail = err
 
 
 def get_instance(instance_name):
@@ -36,16 +30,6 @@ def attach_role(iam_instance_profile, instance_id):
 
 
 def create(event, context):
-    """
-    Place your code to handle Create events here.
-
-    To return a failure to CloudFormation simply raise an exception, the exception message will be sent to CloudFormation Events.
-    """
-    physical_resource_id = 'myResourceId'
-
-    print("Received request to {}.".format(event['RequestType']))
-    # Open AWS clients
-
     instance = get_instance('{}{}{}{}'.format(
                             'aws-cloud9-', event['ResourceProperties']['StackName'],
                             '-', event['ResourceProperties']['EnvironmentId']))
@@ -69,43 +53,35 @@ def create(event, context):
         instance['BlockVolumeId'], instance['InstanceId'], event['ResourceProperties']['EBSVolumeSize']))
     client.modify_volume(VolumeId=block_volume_id,
                          Size=int(event['ResourceProperties']['EBSVolumeSize']))
+    event["Poll"] = True
+    event["PhysicalResourceId"] = block_volume_id
+    setup_poll(event, context)
+    return block_volume_id, {}
 
-    # Reboot the Cloud9 IDE
-    volume_state = client.describe_volumes_modifications(VolumeIds=[block_volume_id])['VolumesModifications'][0]
-    while volume_state['ModificationState'] != 'completed':
-        time.sleep(5)
-        volume_state = client.describe_volumes_modifications(VolumeIds=[block_volume_id])['VolumesModifications'][0]
-    print("Restarting instance {}.".format(instance_name))
-    client.reboot_instances(InstanceIds=[instance['InstanceId']])
+
+def poll(event, context):
+    block_volume_id = event["PhysicalResourceId"]
     response_data = {}
-    return physical_resource_id, response_data
+    volume_state = client.describe_volumes_modifications(VolumeIds=[block_volume_id])['VolumesModifications'][0]
+    if volume_state['ModificationState'] != 'completed':
+        print("Restarting instance {}.".format(instance_name))    
+        client.reboot_instances(InstanceIds=[instance['InstanceId']])
+        response_data['Complete'] = True
+    return block_volume_id, response_data
 
 
 def update(event, context):
-    """
-    Place your code to handle Update events here
-
-    To return a failure to CloudFormation simply raise an exception, the exception message will be sent to CloudFormation Events.
-    """
     physical_resource_id = event['PhysicalResourceId']
     response_data = {}
     return physical_resource_id, response_data
 
 
 def delete(event, context):
-    """
-    Place your code to handle Delete events here
-
-    To return a failure to CloudFormation simply raise an exception, the exception message will be sent to CloudFormation Events.
-    """
     return
 
 
 def handler(event, context):
-    """
-    Main handler function, passes off it's work to crhelper's cfn_handler
-    """
-    # update the logger with event info
-    global logger
-    logger = crhelper.log_config(event)
-    return crhelper.cfn_handler(event, context, create, update, delete, logger, init_failed)
+    global log
+    logger = log_config(event)
+    return cfn_handler(event, context, create, update, delete, poll, logger, init_fail)
+
